@@ -5,6 +5,7 @@ class UserSession(models.Model):
     session_id = models.CharField(max_length=100, unique=True)
     phone_number = models.CharField(max_length=15)
     step = models.CharField(max_length=50)
+    language = models.CharField(max_length=10, default="en")  # Default to English
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

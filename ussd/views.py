@@ -3,7 +3,7 @@ from django.views.decorators.csrf import csrf_exempt
 import json
 import logging
 from .models import UserSession, Account
-from .data import CROPS_PRICES, WEATHER_UPDATES, PRODUCTS
+from .data import CROPS_PRICES, WEATHER_UPDATES, PRODUCTS, TRANSLATIONS
 
 logger = logging.getLogger(__name__)
 
@@ -12,55 +12,74 @@ def ussd_callback(request):
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
-            logger.info(f"Received Data: {data}")  # Log incoming request data
-
-            # Extract values safely
             session_id = data.get("session_id")
             phone_number = data.get("phone_number")
             text = data.get("text", "").strip()
 
-            # Check if required fields exist
             if not session_id or not phone_number:
                 return JsonResponse({"Error": "session_id and phone_number are required"}, status=400)
 
             # Get or create a user session
             session, created = UserSession.objects.get_or_create(
                 session_id=session_id,
-                defaults={"phone_number": phone_number, "step": "main_menu"}
+                defaults={"phone_number": phone_number, "step": "main_menu", "language": "en"}
             )
 
-            response = ""  # Default response
+            response = ""
 
+            # Language selection menu
             if text == "":
-                session.step = 'main_menu'
+                session.step = "language_menu"
                 session.save()
-                response = """CON What would you like to check?\n
-                1. My Account\n 
-                2. My phone number\n 
-                3. Crops Prices\n 
-                4. Weather updates\n
-                5. Order Supplies
+                response = """
+                CON Choose your language:\n
+                1. English\n
+                2. Français\n
+                3. Kinyarwanda
                 """
+            elif session.step == "language_menu":
+                if text == "1":
+                    session.language = "en"
+                elif text == "2":
+                    session.language = "fr"
+                elif text == "3":
+                    session.language = "rw"
+                else:
+                    response = TRANSLATIONS[session.language]["invalid_choice"]
+                    return JsonResponse({"response": response})
+
+                session.step = "main_menu"
+                session.save()
+                response = TRANSLATIONS[session.language]["main_menu"]
             elif text == "1":
                 session.step = "account_menu"
                 session.save()
-                response = "CON Choose account information: \n1. Account Balance\n2. Account number"
+                response = TRANSLATIONS[session.language]["account_menu"]
             elif text == "1*1":
                 try:
                     account = Account.objects.get(phone_number=phone_number)
-                    response = f"END Your account balance is ${account.balance}"
+                    response = TRANSLATIONS[session.language]["balance"].format(account.balance)
                 except Account.DoesNotExist:
-                    response = "END Account not found"
+                    response = TRANSLATIONS[session.language]["account_not_found"]
             elif text == "2":
-                response = f"END Your phone number is {phone_number}"
+                response = TRANSLATIONS[session.language]["phone_number"].format(phone_number)
             elif text == "3":
-                response = "END Crops Prices:\n" + "\n".join([f"{x}: {y} Rwfr" for x, y in CROPS_PRICES.items()])
+                crops_prices = TRANSLATIONS[session.language]["crops_prices"] + "\n".join(
+                    [f"{crop}: {price}" for crop, price in CROPS_PRICES.items()]
+                )
+                response = crops_prices
             elif text == "4":
-                response = "END Weather Updates:\n" + "\n".join([f"{a}: {b}" for a, b in WEATHER_UPDATES.items()])
+                weather_updates = TRANSLATIONS[session.language]["weather_updates"] + "\n".join(
+                    [f"{city}: {update}" for city, update in WEATHER_UPDATES.items()]
+                )
+                response = weather_updates
             elif text == "5":
-                response = "END Order Supplies:\n" + "\n".join([f"{o}: {p}" for o, p in PRODUCTS.items()])
+                order_supplies = TRANSLATIONS[session.language]["order_supplies"] + "\n".join(
+                    [f"{product}: {price}" for product, price in PRODUCTS.items()]
+                )
+                response = order_supplies
             else:
-                response = "END Invalid choice. Please try again."
+                response = TRANSLATIONS[session.language]["invalid_choice"]
 
             return JsonResponse({"response": response})
 
